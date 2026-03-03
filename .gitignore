@@ -1,0 +1,43 @@
+# Cache and settings
+.cache/
+*.pt
+!weights/best_adapter.pth
+
+# Backup (personal)
+.backup_ru/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Models (too large for git)
+ai-vs-human-image-detector/
+sdxl-detector/
+siglip2-so400m-patch16-512/
+dinov2-base/
+wd-swinv2-tagger-v3/
+nsfw_image_detection/
+all-MiniLM-L6-v2/
+moondream2/
+
+# Training runs
+weights/run_*/
+weights/text_emb_cache.pt
+weights/best_val_loss.json
+
+# Training data
+training_data/
