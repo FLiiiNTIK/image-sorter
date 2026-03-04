@@ -1,5 +1,5 @@
 """
-Image Sorting Application — v2.0.0
+Image Sorting Application — v2.0.1
 ─────────────────────────────────────────────────────────────────
 WD SwinV2 Tagger v3 for cluster naming and metadata.
 Sequential VRAM management: classification models unloaded
@@ -134,7 +134,7 @@ class ImageSorterApp:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Image Sorter v2.0.0")
+        self.root.title("Image Sorter v2.0.1")
         self.root.geometry("900x850")
         self.root.minsize(800, 700)
 
@@ -1642,15 +1642,15 @@ class ImageSorterApp:
 
             img_np = np.array(img, dtype=np.float32) / 255.0
             # WD SwinV2 Tagger v3 expects BGR, NHWC, float32 in [0,1]
-            img_np = img_np[:, :, ::-1]  # RGB → BGR
-            img_np = np.expand_dims(img_np, axis=0)  # NHWC: (1, 448, 448, 3)
-
+            img_np = img_np[:, :, ::-1].copy()  # RGB → BGR; .copy() prevents ONNX buffer reuse
+            img_np = np.expand_dims(img_np, axis=0).copy()  # NHWC: (1, 448, 448, 3) — contiguous
+            
             # Infer
             input_name = self.wd_tagger.get_inputs()[0].name
             preds = self.wd_tagger.run(None, {input_name: img_np})[0][0]
 
             # Construct dictionary — tiered thresholds by tag type
-            blocked = {"no_humans", "text_focus"}  # Known false-positive / irrelevant tags
+            blocked = {"text_focus"}  # Known false-positive / irrelevant tags
             res = {}
             for i in range(len(self.wd_tags)):
                 tag = self.wd_tags[i]
