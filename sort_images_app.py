@@ -1,5 +1,5 @@
 """
-Image Sorting Application — v2.0.1
+Image Sorting Application — v2.0.2
 ─────────────────────────────────────────────────────────────────
 WD SwinV2 Tagger v3 for cluster naming and metadata.
 Sequential VRAM management: classification models unloaded
@@ -134,7 +134,7 @@ class ImageSorterApp:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("Image Sorter v2.0.1")
+        self.root.title("Image Sorter v2.0.2")
         self.root.geometry("900x850")
         self.root.minsize(800, 700)
 
@@ -1668,9 +1668,20 @@ class ImageSorterApp:
             input_name = self.wd_tagger.get_inputs()[0].name
             preds = self.wd_tagger.run(None, {input_name: img_np})[0][0]
 
+            # Extract global ratings first (category 9) to determine if image is genuinely NSFW
+            ratings = {
+                "explicit": 0.0, "questionable": 0.0, "sensitive": 0.0, "general": 0.0
+            }
+            for i in range(len(self.wd_tags)):
+                tag = self.wd_tags[i]
+                if tag in ratings:
+                    ratings[tag] = float(preds[i])
+            
+            # Image is considered genuinely mature only if explicit is the dominant rating
+            is_genuinely_explicit = ratings["explicit"] > max(ratings["general"], ratings["sensitive"], ratings["questionable"])
+
             # Construct dictionary — tiered thresholds by tag type
-            blocked = {"no_humans", "text_focus"}  # Known false-positive / irrelevant tags
-            # Mature tags need much higher confidence to prevent false NSFW labeling
+            blocked = {"no_humans", "text_focus", "implied_fellatio"}  # Known false-positive / irrelevant tags
             mature_words = {"nude", "sex", "penis", "vagina", "nipple", "pussy", "breast",
                            "cum", "genital", "anus", "orgasm", "erect", "pubic", "naked",
                            "masturbat", "porn", "hentai", "dildo", "bondage", "tentacle",
@@ -1682,13 +1693,14 @@ class ImageSorterApp:
                     continue
                 score = float(preds[i])
                 cat = self.wd_tag_categories.get(tag, -1)
+                
                 # Characters: lowest threshold (0.05) — maximize detection
-                if cat == 4:  # character
+                if cat == 4:
                     if score > 0.05:
                         res[tag] = score
-                # Mature tags: require 0.35+ confidence to prevent low-score NSFW bleed
+                # Mature tags: only allow if the image is genuinely explicit AND tag confidence > 0.35
                 elif any(m in tag.lower() for m in mature_words):
-                    if score > 0.35:
+                    if is_genuinely_explicit and score > 0.35:
                         res[tag] = score
                 # General/other: 0.1 for quality
                 elif score > 0.1:
