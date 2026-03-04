@@ -1464,11 +1464,19 @@ class ImageSorterApp:
             self._wd_tagger_generate_metadata(accepted, target, wd_preds_cache)
 
         if need_tagger:
+            # Force full ONNX session destruction to prevent CUDA buffer contamination
+            if self.wd_tagger is not None:
+                try:
+                    del self.wd_tagger
+                except Exception:
+                    pass
             self.wd_tagger = None
             self.wd_tags = None
             self.wd_tag_categories = None
             wd_preds_cache.clear()
             gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         if cache_dirty and not self._cancel.is_set():
             try:
@@ -1597,6 +1605,17 @@ class ImageSorterApp:
             import onnxruntime as ort
             import pandas as pd
 
+            # Destroy any existing session first (prevents CUDA buffer leak)
+            if self.wd_tagger is not None:
+                try:
+                    del self.wd_tagger
+                except Exception:
+                    pass
+                self.wd_tagger = None
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
             # Load model
             model_path = os.path.join(WD_TAGGER_PATH, "model.onnx")
             providers = ['CUDAExecutionProvider'] if self.device == "cuda" else ['CPUExecutionProvider']
@@ -1644,13 +1663,18 @@ class ImageSorterApp:
             # WD SwinV2 Tagger v3 expects BGR, NHWC, float32 in [0,1]
             img_np = img_np[:, :, ::-1].copy()  # RGB → BGR; .copy() prevents ONNX buffer reuse
             img_np = np.expand_dims(img_np, axis=0).copy()  # NHWC: (1, 448, 448, 3) — contiguous
-            
+
             # Infer
             input_name = self.wd_tagger.get_inputs()[0].name
             preds = self.wd_tagger.run(None, {input_name: img_np})[0][0]
 
             # Construct dictionary — tiered thresholds by tag type
-            blocked = {"text_focus"}  # Known false-positive / irrelevant tags
+            blocked = {"no_humans", "text_focus"}  # Known false-positive / irrelevant tags
+            # Mature tags need much higher confidence to prevent false NSFW labeling
+            mature_words = {"nude", "sex", "penis", "vagina", "nipple", "pussy", "breast",
+                           "cum", "genital", "anus", "orgasm", "erect", "pubic", "naked",
+                           "masturbat", "porn", "hentai", "dildo", "bondage", "tentacle",
+                           "unskirt", "cameltoe", "areola", "groin", "topless", "bottomless"}
             res = {}
             for i in range(len(self.wd_tags)):
                 tag = self.wd_tags[i]
@@ -1659,11 +1683,14 @@ class ImageSorterApp:
                 score = float(preds[i])
                 cat = self.wd_tag_categories.get(tag, -1)
                 # Characters: lowest threshold (0.05) — maximize detection
-                # Rating tags (cat 9): keep at 0.1
-                # General/other: 0.1 for quality
                 if cat == 4:  # character
                     if score > 0.05:
                         res[tag] = score
+                # Mature tags: require 0.35+ confidence to prevent low-score NSFW bleed
+                elif any(m in tag.lower() for m in mature_words):
+                    if score > 0.35:
+                        res[tag] = score
+                # General/other: 0.1 for quality
                 elif score > 0.1:
                     res[tag] = score
             return res
