@@ -1,0 +1,2 @@
+"""Image sorter application package."""
+

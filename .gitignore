@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+.env
+.venv/
+venv/
+
+# Large / local runtime (do not push to GitHub)
+data/models/
+data/cache/
+.cache/
+weights/
+logs/
+*.pt
+*.pth
+*.onnx
+*.safetensors
+*.mdb
+*.lmdb/
+
+# Optional local embeddings / training
+all-MiniLM-L6-v2/
